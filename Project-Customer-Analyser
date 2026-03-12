@@ -1,0 +1,173 @@
+import pandas as pd
+import numpy as np
+
+np.random.seed(99)
+
+NUM_CUSTOMERS = 100
+NUM_ORDERS    = 500
+
+customer_ids = range(1001, 1001 + NUM_CUSTOMERS)
+cities       = ["Mumbai", "Delhi", "Bangalore", "Hyderabad", "Chennai", "Pune"]
+tiers        = ["Bronze", "Silver", "Gold", "Platinum"]
+
+customers_df = pd.DataFrame({
+    "customer_id":   customer_ids,
+    "name":          [f"Customer_{i}" for i in customer_ids],
+    "city":          np.random.choice(cities, NUM_CUSTOMERS),
+    "membership":    np.random.choice(tiers, NUM_CUSTOMERS, p=[0.4, 0.3, 0.2, 0.1]),
+    "age":           np.random.randint(18, 65, NUM_CUSTOMERS),
+    "joined_date":   pd.date_range("2020-01-01", periods=NUM_CUSTOMERS, freq="7D"),
+})
+
+categories = ["Electronics", "Fashion", "Groceries", "Books", "Home & Kitchen"]
+
+orders_df = pd.DataFrame({
+    "order_id":    range(5001, 5001 + NUM_ORDERS),
+    "customer_id": np.random.choice(customer_ids, NUM_ORDERS),
+    "category":    np.random.choice(categories, NUM_ORDERS),
+    "amount":      np.random.exponential(scale=1500, size=NUM_ORDERS).round(2),
+    "quantity":    np.random.randint(1, 6, NUM_ORDERS),
+    "order_date":  pd.to_datetime(
+        np.random.choice(pd.date_range("2023-01-01", "2024-12-31"), NUM_ORDERS)
+    ),
+    "returned":    np.random.choice([True, False], NUM_ORDERS, p=[0.08, 0.92]),
+})
+
+print("=" * 65)
+print("E-COMMERCE CUSTOMER BEHAVIOR ANALYSIS")
+print("=" * 65)
+print(f"\nCustomers: {len(customers_df)}  |  Orders: {len(orders_df)}")
+
+merged = orders_df.merge(customers_df, on="customer_id", how="left")
+
+print("\n" + "=" * 65)
+print("SECTION 1: Merged Dataset Sample")
+print("=" * 65)
+print(merged[["order_id", "name", "city", "category", "amount", "order_date"]].head(8).to_string(index=False))
+
+print("\n" + "=" * 65)
+print("SECTION 2: Return Rate by Category")
+print("=" * 65)
+
+return_rate = (
+    merged.groupby("category")["returned"]
+    .agg(total_orders="count", returns="sum")
+)
+return_rate["return_rate_%"] = (return_rate["returns"] / return_rate["total_orders"] * 100).round(1)
+return_rate = return_rate.sort_values("return_rate_%", ascending=False)
+print(return_rate.to_string())
+
+print("\n" + "=" * 65)
+print("SECTION 3: Monthly Revenue Trend (2024)")
+print("=" * 65)
+
+orders_2024 = merged[merged["order_date"].dt.year == 2024].copy()
+orders_2024.set_index("order_date", inplace=True)
+
+monthly_rev = (
+    orders_2024["amount"]
+    .resample("ME")
+    .sum()
+    .round(2)
+)
+
+print(f"\n{'Month':<15} {'Revenue':>12} {'Bar'}")
+print("-" * 55)
+max_rev = monthly_rev.max()
+for date, rev in monthly_rev.items():
+    bar    = "█" * int(rev / max_rev * 30)
+    month  = date.strftime("%b %Y")
+    print(f"{month:<15} ₹{rev:>11,.2f}  {bar}")
+
+print("\n" + "=" * 65)
+print("SECTION 4: Orders by City × Category (Crosstab)")
+print("=" * 65)
+
+city_cat = pd.crosstab(
+    merged["city"],
+    merged["category"],
+    margins=True,
+    margins_name="TOTAL"
+)
+print(city_cat.to_string())
+
+print("\n" + "=" * 65)
+print("SECTION 5: RFM Customer Segmentation")
+print("=" * 65)
+
+ANALYSIS_DATE = pd.Timestamp("2025-01-01")
+
+rfm = (
+    merged.groupby("customer_id")
+    .agg(
+        recency=("order_date",  lambda x: (ANALYSIS_DATE - x.max()).days),
+        frequency=("order_id",  "count"),
+        monetary=("amount",     "sum"),
+    )
+    .round(2)
+)
+
+rfm["R_score"] = pd.qcut(rfm["recency"],   4, labels=[4, 3, 2, 1])
+rfm["F_score"] = pd.qcut(rfm["frequency"], 4, labels=[1, 2, 3, 4], duplicates="drop")
+rfm["M_score"] = pd.qcut(rfm["monetary"],  4, labels=[1, 2, 3, 4])
+
+rfm["RFM_score"] = rfm["R_score"].astype(str) + rfm["F_score"].astype(str) + rfm["M_score"].astype(str)
+
+def classify_customer(row):
+    r, f, m = int(row["R_score"]), int(row["F_score"]), int(row["M_score"])
+    if r >= 4 and f >= 4 and m >= 4:
+        return "🌟 Champions"
+    elif r >= 3 and f >= 3:
+        return "💎 Loyal Customers"
+    elif r >= 4 and f <= 2:
+        return "🆕 New Customers"
+    elif r <= 2 and f >= 3:
+        return "⚠️  At Risk"
+    elif r <= 1 and f >= 4:
+        return "❌ Lost Champions"
+    else:
+        return "😴 Hibernating"
+
+rfm["segment"] = rfm.apply(classify_customer, axis=1)
+
+segment_summary = (
+    rfm.groupby("segment")
+    .agg(
+        count=("monetary", "count"),
+        avg_spend=("monetary", "mean"),
+        avg_orders=("frequency", "mean"),
+    )
+    .sort_values("avg_spend", ascending=False)
+    .round(2)
+)
+
+print(segment_summary.to_string())
+
+print("\n" + "=" * 65)
+print("SECTION 6: Spending by Membership Tier")
+print("=" * 65)
+
+tier_spend = (
+    merged.groupby("membership")["amount"]
+    .agg(customers="count", total_spend="sum", avg_order="mean")
+    .round(2)
+    .sort_values("avg_order", ascending=False)
+)
+print(tier_spend.to_string())
+
+print("\n" + "=" * 65)
+print("FINAL BUSINESS INSIGHTS")
+print("=" * 65)
+
+total_rev   = merged["amount"].sum()
+top_city    = merged.groupby("city")["amount"].sum().idxmax()
+top_cat     = merged.groupby("category")["amount"].sum().idxmax()
+return_pct  = merged["returned"].mean() * 100
+champions   = (rfm["segment"] == "🌟 Champions").sum()
+
+print(f"  Total Revenue        : ₹{total_rev:,.2f}")
+print(f"  Top City             : {top_city}")
+print(f"  Top Category         : {top_cat}")
+print(f"  Overall Return Rate  : {return_pct:.1f}%")
+print(f"  Champion Customers   : {champions}")
+print(f"  Avg Order Value      : ₹{merged['amount'].mean():,.2f}")
