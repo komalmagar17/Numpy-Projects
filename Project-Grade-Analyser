@@ -1,0 +1,126 @@
+import numpy as np
+
+np.random.seed(7)
+
+NUM_STUDENTS = 50
+NUM_SUBJECTS = 5
+SUBJECTS     = ["Math", "Physics", "Chemistry", "English", "CS"]
+
+ability = np.random.normal(loc=65, scale=12, size=NUM_STUDENTS)
+
+grades = np.zeros((NUM_STUDENTS, NUM_SUBJECTS))
+for j in range(NUM_SUBJECTS):
+    noise          = np.random.normal(0, 8, NUM_STUDENTS)
+    grades[:, j]   = ability + noise
+    grades[:, j]   = np.clip(grades[:, j], 0, 100)
+
+grades = np.round(grades, 1)
+
+student_names = [f"Student_{i+1:02d}" for i in range(NUM_STUDENTS)]
+
+print("=" * 65)
+print("STUDENT GRADE ANALYSIS SYSTEM")
+print("=" * 65)
+print(f"\nDataset: {NUM_STUDENTS} students × {NUM_SUBJECTS} subjects")
+print(f"\nSubjects: {', '.join(SUBJECTS)}")
+print(f"\nSample grades (first 8 students):")
+print(f"{'Name':<14}" + "".join(f"{s:>10}" for s in SUBJECTS) + f"{'Average':>10}")
+print("-" * 65)
+for i in range(8):
+    row_avg = grades[i].mean()
+    row_str = f"{student_names[i]:<14}" + "".join(f"{grades[i,j]:>10.1f}" for j in range(NUM_SUBJECTS))
+    print(row_str + f"{row_avg:>10.1f}")
+
+print("\n" + "=" * 65)
+print("SECTION 1: Per-Student Overall Performance")
+print("=" * 65)
+
+student_avg = grades.mean(axis=1)
+student_std = grades.std(axis=1)
+
+top5_idx    = np.argsort(student_avg)[-5:][::-1]
+bottom5_idx = np.argsort(student_avg)[:5]
+
+print("\nTop 5 Students:")
+for idx in top5_idx:
+    print(f"  {student_names[idx]:<14} Avg: {student_avg[idx]:.1f}  Consistency (σ): {student_std[idx]:.1f}")
+
+print("\nBottom 5 Students:")
+for idx in bottom5_idx:
+    print(f"  {student_names[idx]:<14} Avg: {student_avg[idx]:.1f}  Consistency (σ): {student_std[idx]:.1f}")
+
+print("\n" + "=" * 65)
+print("SECTION 2: Subject-wise Statistics")
+print("=" * 65)
+
+subject_stats = {
+    "Mean":   grades.mean(axis=0),
+    "Median": np.median(grades, axis=0),
+    "Std":    grades.std(axis=0),
+    "Min":    grades.min(axis=0),
+    "Max":    grades.max(axis=0),
+}
+
+header = f"{'Stat':<10}" + "".join(f"{s:>12}" for s in SUBJECTS)
+print(header)
+print("-" * 65)
+for stat_name, values in subject_stats.items():
+    row = f"{stat_name:<10}" + "".join(f"{v:>12.1f}" for v in values)
+    print(row)
+
+hardest_subject = SUBJECTS[np.argmin(subject_stats["Mean"])]
+easiest_subject = SUBJECTS[np.argmax(subject_stats["Mean"])]
+print(f"\nHardest Subject : {hardest_subject}")
+print(f"Easiest Subject : {easiest_subject}")
+
+print("\n" + "=" * 65)
+print("SECTION 3: Percentile Cutoffs (Overall Average)")
+print("=" * 65)
+
+for p in [25, 50, 75, 90, 95]:
+    cutoff = np.percentile(student_avg, p)
+    print(f"  {p}th percentile : {cutoff:.1f}")
+
+print("\n" + "=" * 65)
+print("SECTION 4: Grade Band Distribution")
+print("=" * 65)
+
+bands = {
+    "A  (90–100)": (student_avg >= 90),
+    "B  (75–89) ": (student_avg >= 75) & (student_avg < 90),
+    "C  (60–74) ": (student_avg >= 60) & (student_avg < 75),
+    "D  (45–59) ": (student_avg >= 45) & (student_avg < 60),
+    "F  (0–44)  ": (student_avg < 45),
+}
+
+for band, mask in bands.items():
+    count   = np.sum(mask)
+    percent = count / NUM_STUDENTS * 100
+    bar     = "█" * count
+    print(f"  Grade {band}: {count:>3} students ({percent:5.1f}%)  {bar}")
+
+print("\n" + "=" * 65)
+print("SECTION 5: Subject Correlation Matrix")
+print("=" * 65)
+print("(How much do grades in one subject predict grades in another?)")
+print("1.0 = perfect, 0.0 = no relation\n")
+
+corr_matrix = np.corrcoef(grades.T)
+
+header = f"{'':>12}" + "".join(f"{s:>11}" for s in SUBJECTS)
+print(header)
+for i, subj in enumerate(SUBJECTS):
+    row = f"{subj:>12}" + "".join(f"{corr_matrix[i,j]:>11.2f}" for j in range(NUM_SUBJECTS))
+    print(row)
+
+print("\n" + "=" * 65)
+print("CLASS SUMMARY")
+print("=" * 65)
+pass_mask  = student_avg >= 60
+fail_mask  = ~pass_mask
+
+print(f"  Class Average   : {student_avg.mean():.1f}")
+print(f"  Highest Average : {student_avg.max():.1f}  ({student_names[np.argmax(student_avg)]})")
+print(f"  Lowest Average  : {student_avg.min():.1f}  ({student_names[np.argmin(student_avg)]})")
+print(f"  Pass Rate       : {np.sum(pass_mask)}/{NUM_STUDENTS} ({np.sum(pass_mask)/NUM_STUDENTS*100:.1f}%)")
+print(f"  Fail Rate       : {np.sum(fail_mask)}/{NUM_STUDENTS} ({np.sum(fail_mask)/NUM_STUDENTS*100:.1f}%)")
